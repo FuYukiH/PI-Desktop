@@ -203,8 +203,10 @@ export function AgentExtensionDetails({ status }: { status: PluginAgentExtension
 }
 
 /**
- * The compact rating readout cards carry in their metadata line: one star,
- * the average, and how many ratings it is worth. Nothing renders when the
+ * The compact rating readout cards carry. The count is not shown beside the
+ * average (the review line is where reviews live), and a caller that passes
+ * `showZero` keeps the chip visible when the centre answered with no ratings,
+ * reading a fixed 0.0 instead. Without `showZero` nothing renders when the
  * centre has no summary for the plugin — an unavailable service must not read
  * as a zero rating.
  */
@@ -212,23 +214,34 @@ export function RatingChip({
   summary,
   locale,
   showDot = true,
+  showZero = false,
 }: {
   summary: PluginReviewSummary | undefined;
   locale: string;
   /** The card footer separates rating from review text with its own rule. */
   showDot?: boolean;
+  /** Render a fixed 0.0 when the centre reports no ratings. */
+  showZero?: boolean;
 }) {
   const { t } = useTranslation();
   const avg = summary ? formatRatingAvg(summary.ratingAvg, locale) : null;
-  if (!summary || !avg || summary.ratingCount <= 0) return null;
+  const unrated = !summary || !avg || summary.ratingCount <= 0;
+  if (unrated && !showZero) return null;
+  const text = unrated
+    ? formatRatingAvg(0, locale)
+    : t("plugins.reviews.ratingChip", { avg });
   return (
     <span
       className="plugins-rating"
-      role="img"
-      aria-label={t("plugins.reviews.ratingSummaryAria", {
-        avg,
-        count: summary.ratingCount,
-      })}
+      role={unrated ? undefined : "img"}
+      aria-label={
+        unrated
+          ? undefined
+          : t("plugins.reviews.ratingSummaryAria", {
+              avg,
+              count: summary.ratingCount,
+            })
+      }
     >
       {showDot ? (
         <span className="plugins-dot" aria-hidden>
@@ -236,9 +249,7 @@ export function RatingChip({
         </span>
       ) : null}
       <IconStar size={11} style={{ fill: "currentColor" }} aria-hidden="true" />
-      <span className="plugins-rating-text">
-        {t("plugins.reviews.ratingChip", { avg, count: summary.ratingCount })}
-      </span>
+      <span className="plugins-rating-text">{text}</span>
     </span>
   );
 }

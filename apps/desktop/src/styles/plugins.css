@@ -996,10 +996,18 @@
   color: var(--ds-text-primary);
 }
 
+/* Two columns at full width (was auto-fill, which grew to three or more on
+   wide windows); a container narrower than one card falls back to one. */
 .plugins-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(272px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 400px) {
+  .plugins-card-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Marketplace cards are tiles too: tint at rest, lifted by shadow on hover. */
@@ -1168,6 +1176,12 @@
   flex: 0 0 1px;
   height: 9px;
   background: var(--ds-border-subtle);
+}
+
+/* Fixed "no reviews yet" placeholder: not a ticker line, so no fade and a
+   quieter, italic voice. */
+.plugins-card-review.is-empty {
+  font-style: italic;
 }
 
 .plugins-card-review-text {

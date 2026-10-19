@@ -53,11 +53,22 @@ test("installed and marketplace cards carry the rating chip in their metadata", 
   assert.match(presentation, /export function RatingChip/);
   assert.match(presentation, /formatRatingAvg/);
   assert.match(presentation, /summary\.ratingCount <= 0/);
-  assert.match(marketPanel, /<RatingChip[\s\S]*?summary=\{reviewSummaries\[item\.id\]\}/);
+  // The count never rides beside the average on the chip: the review line is
+  // where reviews live (marketplace zero-ratings cards read a fixed 0.0 via
+  // showZero; other callers keep the summary-absent chip hidden).
+  assert.match(marketPanel, /<RatingChip[\s\S]*?summary=\{reviewSummaries\[item\.id\]\}[\s\S]*?showZero/);
   assert.match(installedPanel, /<RatingChip[\s\S]*?summary=\{reviewSummaries\[plugin\.id\]\}/);
+  assert.doesNotMatch(installedPanel, /showZero/);
   // A chip lives inside the existing metadata line, so the card grows no row.
   assert.match(marketPanel, /plugins-card-meta[\s\S]*?<RatingChip/);
   assert.match(installedPanel, /plugins-row-meta[\s\S]*?<RatingChip/);
+  // Locale catalogue: the chip text is the average alone, in every locale.
+  for (const locale of ["de", "en", "es", "fr", "ko", "pt-BR", "tr", "zh-CN", "zh-TW"]) {
+    const catalogue = read(`../../../packages/i18n/src/locales/${locale}/index.ts`);
+    assert.match(catalogue, /ratingChip: "\{\{avg\}\}",/);
+    assert.doesNotMatch(catalogue, /ratingChip: "[^"]*\{\{count\}\}/);
+    assert.match(catalogue, /tickerEmpty: /);
+  }
 });
 
 test("the installed card shows the trust glyph only from installed metadata", () => {

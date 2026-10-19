@@ -205,7 +205,7 @@ Object.assign(globalThis, {
       chip.getAttribute("aria-label") === "Rated 4.5 out of 5 from 3 ratings",
       `rating chip aria-label: ${chip.getAttribute("aria-label")}`,
     );
-    check(chip.textContent?.includes("4.5 (3)") === true, `rating chip text: ${chip.textContent}`);
+    check(chip.textContent?.includes("4.5") === true && !chip.textContent?.includes("(3)"), `rating chip text: ${chip.textContent}`);
 
     find(".plugins-card-hit").click();
     await settle(() => !!maybe(".plugins-sheet"), "detail sheet");
@@ -670,7 +670,8 @@ Object.assign(globalThis, {
     );
     await settle(() => !!maybe(".plugins-rating"), "batch probe: fresh chip");
     check(
-      find(".plugins-rating").textContent?.includes("4.5 (3)") === true,
+      find(".plugins-rating").textContent?.includes("4.5") === true &&
+      !find(".plugins-rating").textContent?.includes("(3)"),
       `fresh chip text: ${find(".plugins-rating").textContent}`,
     );
     check(
@@ -689,7 +690,8 @@ Object.assign(globalThis, {
     // stays and the stale rating never appears on the visible card.
     check(!!maybe(".plugins-rating"), "fresh chip lost after the stale answer landed");
     check(
-      find(".plugins-rating").textContent?.includes("4.5 (3)") === true,
+      find(".plugins-rating").textContent?.includes("4.5") === true &&
+      !find(".plugins-rating").textContent?.includes("(3)"),
       "fresh chip changed after the stale answer landed",
     );
     check(

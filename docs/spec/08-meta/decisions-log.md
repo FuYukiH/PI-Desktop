@@ -72,6 +72,7 @@ This log freezes previously open questions into concrete decisions.
 | D021 | First-run onboarding | **Inline checklist (not modal wizard)** |
 | D022 | Local telemetry | **Local logs only in MVP (no remote telemetry)** |
 | D664 | Sidebar running activity defaults | **When unset, the master and Count badge resolve on while Activity rail resolves off. Explicit saved values remain authoritative. The master continues gating both affordances; turning it off does not rewrite either child preference. No schema or migration change.** |
+| D665 | Marketplace two-column card grid and footer review line | **Marketplace cards render in a fixed two-column grid (`repeat(2, minmax(0, 1fr))`, single column below 400px). The card footer rotates the centre-selected review rows every six seconds (hover/focus pause, reduced-motion aware) and shows a fixed localized "no reviews yet" line when none exist. The rating chip shows the average without the count, and a marketplace card with a zero-rating summary reads 0.0; the chip hides only when no summary exists. Installed rows and the detail sheet are unchanged.** |
 
 
 ## C. Provider & model coverage decisions (0.3.4)
@@ -7778,3 +7779,25 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   default. Settings reads apply these defaults through renderer API
   normalization; no persisted schema or migration change is required. See
   `04-ux/01-ui-ia.md`, `04-ux/06-settings-ia.md`, and E2E-266.
+
+## 2026-10-19 — Marketplace two-column card grid and footer review line (D665)
+
+- The marketplace card grid renders exactly two columns at full width
+  (`repeat(2, minmax(0, 1fr))`, replacing `auto-fill`, which grew to three or
+  more columns on wide windows) and falls back to a single column when the
+  container cannot hold two cards.
+- Each card footer keeps the rating chip beside a rotating review line: the
+  line cycles through the centre-selected rows every six seconds, pauses on
+  hover or focus, and respects reduced motion. When the plugin has no reviews,
+  the footer shows a fixed localized "no reviews yet" placeholder instead of
+  collapsing the slot.
+- The rating chip shows the one-decimal average alone — the rating count is
+  removed from the chip in every locale. A marketplace card whose summary
+  reports zero ratings reads a fixed 0.0; the chip stays hidden only when the
+  centre provides no summary at all, so an unavailable service still never
+  reads as a zero rating. Installed-row chips and the detail sheet summary are
+  unchanged.
+- Covered by `apps/desktop/test/plugin-reviews-surface.test.mjs`,
+  `apps/desktop/test/plugins-page-style.test.mjs`,
+  `packages/i18n/test/catalogs.test.mjs`, and the reviews-drawer E2E fixture.
+  See `07-plugins/07-plugin-marketplace.md` §7.

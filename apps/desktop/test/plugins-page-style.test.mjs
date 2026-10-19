@@ -79,6 +79,23 @@ test("plugins page styles tier permission risk with semantic tokens", () => {
   assert.match(section, /@media \(prefers-reduced-motion: reduce\)/);
 });
 
+// The marketplace card grid is exactly two columns at full width (a fixed
+// count, not auto-fill, which grew to three or more on wide windows) and
+// falls back to one when the container cannot hold two cards.
+test("marketplace cards sit in a fixed two-column grid with a narrow fallback", () => {
+  const section = pluginsSection(stylesSource);
+
+  assert.match(
+    section,
+    /\.plugins-card-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
+  );
+  assert.doesNotMatch(section, /\.plugins-card-grid\s*\{[^}]*auto-fill/);
+  assert.match(
+    section,
+    /@media \(max-width: 400px\)\s*\{\s*\.plugins-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/,
+  );
+});
+
 // The installed list is an auto-filling grid of soft tile cards: the gap does
 // the work a hairline used to, `min(340px, 100%)` stops a column from
 // overflowing a container narrower than one card, and nothing clips so a
