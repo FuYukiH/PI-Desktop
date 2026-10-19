@@ -612,6 +612,102 @@ Object.assign(globalThis, {
     return "PASS: at a narrow viewport the drawer stays inside it with no horizontal overflow; filters, sort, close and the write link are all usable; the body scrolls and the composer stays pinned";
   },
 
+  // A summary the centre returned with no ratings reads a fixed 0.0 on the
+  // card, a rated summary keeps the average alone, and a card the centre never
+  // answered keeps no chip at all — an unknown rating must never read as zero.
+  // The footer review line also holds its slot: the centre's rows when there
+  // are any, a fixed placeholder when there are none.
+  pluginReviewsZeroRatingProbe: async () => {
+    step("zero:init");
+    await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+    const ratedPlugin = { ...plugin, id: "rated.plugin", name: "Rated Plugin" };
+    const zeroPlugin = { ...plugin, id: "zero.plugin", name: "Zero Plugin" };
+    const silentPlugin = { ...plugin, id: "silent.plugin", name: "Silent Plugin" };
+    Object.assign(api, {
+      ...pageMocks(),
+      marketSearch: async () => ({ plugins: [ratedPlugin, zeroPlugin, silentPlugin] }),
+      marketReviewSummaries: async () => ({
+        "rated.plugin": { ...summary, pluginId: "rated.plugin" },
+        "zero.plugin": {
+          ...summary,
+          pluginId: "zero.plugin",
+          ratingAvg: 0,
+          ratingCount: 0,
+          ratingDist: [0, 0, 0, 0, 0],
+          positiveCount: 0,
+          neutralCount: 0,
+          negativeCount: 0,
+        },
+      }),
+      marketReviewTickers: async () => ({
+        "rated.plugin": {
+          pluginId: "rated.plugin",
+          rows: [
+            {
+              id: "ticker-1",
+              authorName: "Ada",
+              ratingHalfStars: 9,
+              body: "Rotates on the card",
+              helpfulCount: 2,
+              createdAt: "2026-10-01T00:00:00.000Z",
+            },
+          ],
+        },
+      }),
+    });
+
+    usePluginBrowseState.setState({ tab: "market", query: "" });
+    step("zero:render");
+    const { container, root } = mountProbe();
+    await settle(() => texts(".plugins-card-name").length === 3, "zero probe: three cards");
+    await settle(
+      () => !!cardByName("Rated Plugin").querySelector(".plugins-rating"),
+      "zero probe: rated chip",
+    );
+
+    const ratedChip = cardByName("Rated Plugin").querySelector(".plugins-rating");
+    check(
+      ratedChip?.getAttribute("aria-label") === "Rated 4.5 out of 5 from 3 ratings",
+      `zero probe: rated aria-label: ${ratedChip?.getAttribute("aria-label")}`,
+    );
+    check(
+      ratedChip?.textContent?.includes("4.5") === true &&
+        !ratedChip?.textContent?.includes("(3)"),
+      `zero probe: rated chip text: ${ratedChip?.textContent}`,
+    );
+
+    await settle(
+      () => !!cardByName("Zero Plugin").querySelector(".plugins-rating"),
+      "zero probe: zero-rating chip",
+    );
+    const zeroChip = cardByName("Zero Plugin").querySelector(".plugins-rating");
+    check(
+      zeroChip?.textContent?.trim() === "0.0",
+      `zero probe: zero-rating chip text: ${zeroChip?.textContent}`,
+    );
+    check(
+      cardByName("Silent Plugin").querySelector(".plugins-rating") === null,
+      "zero probe: a card the centre never answered rendered a zero rating",
+    );
+
+    check(
+      cardByName("Rated Plugin")
+        .querySelector(".plugins-card-review")
+        ?.textContent?.includes("Rotates on the card") === true,
+      `zero probe: review line: ${cardByName("Rated Plugin").querySelector(".plugins-card-review")?.textContent}`,
+    );
+    check(
+      cardByName("Silent Plugin")
+        .querySelector(".plugins-card-review.is-empty")
+        ?.textContent?.includes("No reviews yet") === true,
+      `zero probe: empty review line: ${cardByName("Silent Plugin").querySelector(".plugins-card-review")?.textContent}`,
+    );
+
+    root.unmount();
+    container.remove();
+    return "PASS: a zero-rating summary reads 0.0 without a count, an unanswered card keeps no chip, and the footer review line rotates the centre's rows or names the empty state";
+  },
+
   pluginReviewsBatchProbe: async () => {
     step("batch:init");
     await i18n.init({ lng: "en", resources: { en: { translation: en } } });

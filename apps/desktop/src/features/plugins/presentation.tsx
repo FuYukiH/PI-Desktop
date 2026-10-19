@@ -204,11 +204,11 @@ export function AgentExtensionDetails({ status }: { status: PluginAgentExtension
 
 /**
  * The compact rating readout cards carry. The count is not shown beside the
- * average (the review line is where reviews live), and a caller that passes
- * `showZero` keeps the chip visible when the centre answered with no ratings,
- * reading a fixed 0.0 instead. Without `showZero` nothing renders when the
- * centre has no summary for the plugin — an unavailable service must not read
- * as a zero rating.
+ * average (the review line is where reviews live). Nothing renders without a
+ * summary at all — an unanswered or unreachable centre must never read as a
+ * zero rating, whether the read is still in flight or has failed. A caller
+ * that passes `showZero` keeps the chip visible only for the summary the centre
+ * actually returned with no ratings, reading a fixed 0.0.
  */
 export function RatingChip({
   summary,
@@ -220,27 +220,28 @@ export function RatingChip({
   locale: string;
   /** The card footer separates rating from review text with its own rule. */
   showDot?: boolean;
-  /** Render a fixed 0.0 when the centre reports no ratings. */
+  /** Render a fixed 0.0 when the centre reports a summary with no ratings. */
   showZero?: boolean;
 }) {
   const { t } = useTranslation();
-  const avg = summary ? formatRatingAvg(summary.ratingAvg, locale) : null;
-  const unrated = !summary || !avg || summary.ratingCount <= 0;
-  if (unrated && !showZero) return null;
-  const text = unrated
-    ? formatRatingAvg(0, locale)
-    : t("plugins.reviews.ratingChip", { avg });
+  if (!summary) return null;
+  const avg = formatRatingAvg(summary.ratingAvg, locale);
+  const rated = !!avg && summary.ratingCount > 0;
+  if (!rated && !showZero) return null;
+  const text = rated
+    ? t("plugins.reviews.ratingChip", { avg })
+    : formatRatingAvg(0, locale);
   return (
     <span
       className="plugins-rating"
-      role={unrated ? undefined : "img"}
+      role={rated ? "img" : undefined}
       aria-label={
-        unrated
-          ? undefined
-          : t("plugins.reviews.ratingSummaryAria", {
+        rated
+          ? t("plugins.reviews.ratingSummaryAria", {
               avg,
               count: summary.ratingCount,
             })
+          : undefined
       }
     >
       {showDot ? (

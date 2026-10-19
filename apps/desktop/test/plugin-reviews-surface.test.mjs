@@ -52,10 +52,12 @@ test("an installed card grows one call to action: update, then open panel", () =
 test("installed and marketplace cards carry the rating chip in their metadata", () => {
   assert.match(presentation, /export function RatingChip/);
   assert.match(presentation, /formatRatingAvg/);
-  assert.match(presentation, /summary\.ratingCount <= 0/);
+  // No summary, no chip — an in-flight or failed read never reads as 0.0.
+  assert.match(presentation, /if \(!summary\) return null;/);
+  assert.match(presentation, /summary\.ratingCount > 0/);
   // The count never rides beside the average on the chip: the review line is
-  // where reviews live (marketplace zero-ratings cards read a fixed 0.0 via
-  // showZero; other callers keep the summary-absent chip hidden).
+  // where reviews live (marketplace cards whose summary reports no ratings read
+  // a fixed 0.0 via showZero; other callers keep that chip hidden).
   assert.match(marketPanel, /<RatingChip[\s\S]*?summary=\{reviewSummaries\[item\.id\]\}[\s\S]*?showZero/);
   assert.match(installedPanel, /<RatingChip[\s\S]*?summary=\{reviewSummaries\[plugin\.id\]\}/);
   assert.doesNotMatch(installedPanel, /showZero/);
@@ -217,6 +219,11 @@ test("the review drawer keeps a real-Chromium user-path fixture", () => {
   assert.match(harness, /pluginReviewsDrawerProbe/);
   assert.match(harness, /pluginReviewsStaleSummaryProbe/);
   assert.match(harness, /pluginReviewsUnavailableSummaryProbe/);
+  // The card footer contract: a zero-rating summary reads 0.0, an unanswered
+  // card keeps no chip, and the review line holds its slot either way.
+  assert.match(harness, /pluginReviewsZeroRatingProbe/);
+  assert.match(fixture, /pluginReviewsZeroRatingProbe/);
+  assert.match(fixture, /plugins-card-review\.is-empty/);
   assert.match(harness, /pluginReviewsBatchProbe/);
   assert.match(harness, /pluginReviewsNarrowDrawerProbe/);
   assert.match(harness, /setContentSize/);
