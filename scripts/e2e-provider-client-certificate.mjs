@@ -29,12 +29,20 @@ try {
     output += chunk;
     process.stdout.write(chunk);
   });
-  const timer = setTimeout(() => child.kill(), 60_000);
+  // A hung probe must fail the step quickly: SIGTERM first, then SIGKILL, so a
+  // child that ignores the polite signal can never hold the CI job open.
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGTERM");
+    setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+  }, 120_000);
   try {
     const code = await new Promise((resolve, reject) => {
       child.once("error", reject);
       child.once("close", resolve);
     });
+    assert.equal(timedOut, false, `provider client certificate E2E hung and was killed:\n${output}`);
     assert.equal(code, 0, output);
     assert.match(output, /provider client certificate E2E passed/);
   } finally { clearTimeout(timer); }
