@@ -583,7 +583,9 @@ error states.
 
 Marketplace cards sit in a fixed two-column grid at full width
 (`repeat(2, minmax(0, 1fr))`, not auto-fill), falling back to a single column
-when the container cannot hold two cards (D665). Each card's footer carries
+from the page container's own width (`@container plugins-page (max-width:
+560px)`) rather than the viewport, so a narrow pane in a wide window still
+collapses (D665). Each card's footer carries
 the rating chip, one rotating review line, and the install action: the review
 line cycles through the centre-selected rows every six seconds (pausing on
 hover or focus, and respecting reduced motion), and when the plugin has no

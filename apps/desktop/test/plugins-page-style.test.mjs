@@ -80,8 +80,9 @@ test("plugins page styles tier permission risk with semantic tokens", () => {
 });
 
 // The marketplace card grid is exactly two columns at full width (a fixed
-// count, not auto-fill, which grew to three or more on wide windows) and
-// falls back to one when the container cannot hold two cards.
+// count, not auto-fill, which grew to three or more on wide windows) and falls
+// back to one column from the page container's own width — the pane can be
+// narrow while the window is wide, so a viewport query would miss it.
 test("marketplace cards sit in a fixed two-column grid with a narrow fallback", () => {
   const section = pluginsSection(stylesSource);
 
@@ -90,10 +91,16 @@ test("marketplace cards sit in a fixed two-column grid with a narrow fallback", 
     /\.plugins-card-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/,
   );
   assert.doesNotMatch(section, /\.plugins-card-grid\s*\{[^}]*auto-fill/);
+  // The fallback needs a container to query: the page owns the context.
   assert.match(
     section,
-    /@media \(max-width: 400px\)\s*\{\s*\.plugins-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/,
+    /\.plugins-page\s*\{[^}]*container-type:\s*inline-size;[^}]*container-name:\s*plugins-page;/,
   );
+  assert.match(
+    section,
+    /@container plugins-page \(max-width: 560px\)\s*\{\s*\.plugins-card-grid\s*\{[^}]*grid-template-columns:\s*1fr/,
+  );
+  assert.doesNotMatch(section, /@media \(max-width: 400px\)\s*\{\s*\.plugins-card-grid/);
 });
 
 // The installed list is an auto-filling grid of soft tile cards: the gap does

@@ -659,6 +659,9 @@ Object.assign(globalThis, {
     usePluginBrowseState.setState({ tab: "market", query: "" });
     step("zero:render");
     const { container, root } = mountProbe();
+    // The shipping page root owns the container query; the probe's mount point
+    // stands in for it so the grid's fallback can be measured.
+    container.className = "plugins-page";
     await settle(() => texts(".plugins-card-name").length === 3, "zero probe: three cards");
     await settle(
       () => !!cardByName("Rated Plugin").querySelector(".plugins-rating"),
@@ -702,6 +705,20 @@ Object.assign(globalThis, {
         ?.textContent?.includes("No reviews yet") === true,
       `zero probe: empty review line: ${cardByName("Silent Plugin").querySelector(".plugins-card-review")?.textContent}`,
     );
+
+    // The fallback tracks the pane, not the window: with the window still wide,
+    // a 500px page container must collapse the grid to one column, and a 900px
+    // one must restore the pair.
+    const page = document.querySelector<HTMLElement>(".plugins-page");
+    const grid = document.querySelector<HTMLElement>(".plugins-card-grid");
+    check(!!page && !!grid, "zero probe: page container or grid missing");
+    const columns = () =>
+      getComputedStyle(grid!).gridTemplateColumns.split(" ").filter(Boolean).length;
+    page!.style.width = "900px";
+    check(columns() === 2, `zero probe: wide pane columns: ${columns()}`);
+    page!.style.width = "500px";
+    check(columns() === 1, `zero probe: narrow pane columns: ${columns()}`);
+    page!.style.width = "";
 
     root.unmount();
     container.remove();
