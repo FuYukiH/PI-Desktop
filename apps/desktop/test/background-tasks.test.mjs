@@ -169,5 +169,23 @@ test("the container filters to the active session and badges new work", () => {
   assert.match(controller, /api\.backgroundTasksList\(\)/);
   // The badge clears only when the user enters the tasks tab.
   assert.match(controller, /const openTasksTab = useCallback/);
-  assert.match(controller, /clearBadge\(chooseTab\(current, sessionId, "tasks"\), sessionId\)/);
+  assert.match(controller, /clearBadge\(selectTab\(current, sessionId, "tasks"\), sessionId\)/);
+});
+
+test("deleting a session signals its tasks from the shared cleanup path only", () => {
+  // D6: every deletion path converges on `drop_session_side_data`, so that is
+  // the one place a stop is issued. There is no archive RPC: archiving is a
+  // renderer flag, which is what keeps it from killing live processes.
+  const cleanup = rpcSources.match(
+    /fn drop_session_side_data\(st: &AppState, id: &str\) \{([\s\S]*?)\n\}/,
+  );
+  assert.ok(cleanup, "the shared per-session cleanup must exist");
+  assert.match(cleanup[1], /st\.background_tasks\.stop_session_running\(id\);/);
+  // Deleting is the only caller of that cleanup, and no archive method exists.
+  assert.equal(
+    rpcSources.match(/drop_session_side_data\(&st, id\);/g)?.length,
+    2,
+    "both deletion paths reach the shared cleanup",
+  );
+  assert.doesNotMatch(rpcSources, /"session\.archive"/);
 });

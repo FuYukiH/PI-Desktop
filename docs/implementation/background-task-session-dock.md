@@ -66,11 +66,20 @@ Two smaller defects compounded these:
 ### P2 — renderer data layer
 
 - `dock-state.ts` (new): per-session `chosenTab` / `newCount` / `collapsed`,
-  `resolveDockTab`, `observeSessionTasks`, `clearBadge`, `chooseTab`,
-  `toggleCollapsed`, `pruneDockView`.
+  `resolveDockTab` / `resolveDockTabFor`, `observeSessionTasks`, `clearBadge`,
+  `chooseTab`, `selectTab`, `tasksPanelVisible`, `toggleCollapsed`,
+  `pruneDockView`.
+  - `selectTab` is the tab-click entry point and writes `chosenTab` and
+    `collapsed: false` together, which is what makes D15 hold: a click while
+    collapsed expands instead of swapping an invisible panel.
+  - `tasksPanelVisible` / `resolveDockTabFor` are the shared tab rule. The
+    render path and the badge path both call them, so "which panel is on
+    screen" has one definition rather than a copy that can drift. The hook
+    therefore takes the todo side from the container (`useBackgroundTasks(sessionId, todos)`)
+    instead of assuming it is absent.
 - `bar-visibility.ts`: `dismissTask` now takes the task and refuses `running`;
   `canDismiss` exposes the same rule to the view.
-- `useBackgroundTasks(sessionId)`: filters to the session, owns the badge
+- `useBackgroundTasks(sessionId, todos)`: filters to the session, owns the badge
   accounting, and exposes `remove(id)` which looks the task up rather than
   trusting the caller.
 
@@ -123,10 +132,15 @@ Local:
   that spares other sessions, and the deleted-session spawn refusal.
 - `cargo fmt -p host-core -- --check`, `cargo clippy -p host-core --all-targets`
 - `pnpm build:js`, `pnpm --filter @pi-desktop/desktop typecheck`, `pnpm lint`
-- `node --test apps/desktop/test/background-tasks*.test.mjs`
+- `node --test apps/desktop/test/background-tasks*.test.mjs` - 46 passed. The
+  new `background-tasks-dock-state.test.mjs` covers the view rules directly,
+  including D15 (a tab click while collapsed expands) and the shared tab rule
+  that keeps the badge from disagreeing with the visible panel.
+- `node scripts/check-style-tokens.mjs` - clean.
 
 Delegated to CI: the full desktop suite, because it contains macOS
-signing/notarization and Electron-binary cases that need the CI environment.
+signing and notarization, plus Electron-binary cases that need the CI
+environment.
 
 ## Compatibility
 

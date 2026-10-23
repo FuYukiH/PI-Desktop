@@ -26,6 +26,21 @@ export function TaskDock({ sessionId }: { sessionId: string }) {
   const snapshot = useAppStore((state) => state.sessionTodos[sessionId]);
   const panelId = useId();
 
+  // The container now owns the todo read, so it recovers the snapshot the same
+  // way the standalone dock did.
+  useSessionTodosRecovery(sessionId);
+
+  const todos = snapshot?.todos ?? [];
+  const hasTodo = todos.length > 0;
+
+  const progress = useMemo(
+    () => (hasTodo ? todoProgress(todos, t) : null),
+    [hasTodo, todos, t],
+  );
+
+  // The container owns the todo read, so it hands the hook the todo side it
+  // cannot read itself: one tab rule then decides both the visible panel and
+  // whether a new task needs a badge.
   const {
     tasks,
     sessionTasks,
@@ -43,22 +58,11 @@ export function TaskDock({ sessionId }: { sessionId: string }) {
     remove,
     error,
     stoppingIds,
-  } = useBackgroundTasks(sessionId);
+  } = useBackgroundTasks(sessionId, todos);
 
-  // The container now owns the todo read, so it recovers the snapshot the same
-  // way the standalone dock did.
-  useSessionTodosRecovery(sessionId);
-
-  const todos = snapshot?.todos ?? [];
-  const hasTodo = todos.length > 0;
   const hasTasks = sessionTasks.length > 0;
   const running = sessionTasks.filter((task) => task.state === "running").length;
   const showTabs = hasTodo && hasTasks;
-
-  const progress = useMemo(
-    () => (hasTodo ? todoProgress(todos, t) : null),
-    [hasTodo, todos, t],
-  );
 
   if (!hasTodo && !hasTasks && !error) return null;
 

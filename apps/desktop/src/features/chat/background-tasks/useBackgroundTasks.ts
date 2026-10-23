@@ -9,22 +9,47 @@ import {
   selectVisibleTasks,
 } from "./bar-visibility";
 import {
+  type DockSides,
   type DockTab,
   type DockViewState,
-  EMPTY_SESSION_DOCK,
   badgeLabel,
-  chooseTab,
   clearBadge,
   observeSessionTasks,
   pruneDockView,
-  resolveDockTab,
+  resolveDockTabFor,
+  selectTab,
   sessionDockState,
+  tasksPanelVisible,
   toggleCollapsed,
 } from "./dock-state";
+import type { SessionTodo } from "@pi-desktop/shared";
 
 const REFRESH_MS = 1_000;
 type Failure = "load" | "output" | "stop" | "remove";
 
+/**
+ * Both sides of the container, described the way the tab rule expects.
+ *
+ * The hook reads the task side from the registry snapshot and takes the todo
+ * side from its caller, which owns that read. Both the render rule and the
+ * badge rule consume this one description, so they cannot disagree about which
+ * panel is on screen.
+ */
+function sidesFor(
+  sessionTasks: readonly BackgroundTaskSummary[],
+  todos: readonly SessionTodo[],
+): DockSides {
+  let runningTasks = 0;
+  for (const task of sessionTasks) {
+    if (task.state === "running") runningTasks += 1;
+  }
+  return {
+    hasTodo: todos.length > 0,
+    hasTasks: sessionTasks.length > 0,
+    runningTasks,
+    inProgressTodos: todos.filter((todo) => todo.status === "in_progress").length,
+  };
+}
 /**
  * Background tasks for one session, plus the shared container's view state.
  *
@@ -33,7 +58,10 @@ type Failure = "load" | "output" | "stop" | "remove";
  * keeps seeing the full picture. Switching sessions therefore changes only what
  * is displayed — never whether a task runs.
  */
-export function useBackgroundTasks(sessionId: string | null | undefined) {
+export function useBackgroundTasks(
+  sessionId: string | null | undefined,
+  todos: readonly SessionTodo[] = [],
+) {
   const [allTasks, setAllTasks] = useState<BackgroundTaskSummary[]>([]);
   // Renderer-local view state: which tasks the container may show. The registry
   // in host-core stays the source of truth for the processes themselves.
@@ -85,14 +113,7 @@ export function useBackgroundTasks(sessionId: string | null | undefined) {
           const seen = knownIds.current.get(currentSession) ?? new Set<string>();
           setDockView((current) => {
             const state = sessionDockState(current, currentSession);
-            const tasksVisible = !state.collapsed &&
-              resolveDockTab(
-                state,
-                true,
-                sessionTasks.length > 0,
-                sessionTasks.filter((task) => task.state === "running").length,
-                0,
-              ) === "tasks";
+            const tasksVisible = tasksPanelVisible(state, sidesFor(sessionTasks, todosRef.current));
             const folded = observeSessionTasks(current, currentSession, sessionTasks, {
               knownIds: seen,
               tasksVisible,
@@ -135,6 +156,10 @@ export function useBackgroundTasks(sessionId: string | null | undefined) {
 
   // Only this session's tasks reach the container. A task from another session
   // is not hidden because it ended: it simply belongs elsewhere.
+  // The poll loop outlives a render, so it reads the todo side through a ref
+  // rather than capturing one snapshot of the caller's list.
+  const todosRef = useRef(todos);
+  todosRef.current = todos;
   const sessionTasks = useMemo(
     () => (sessionId ? allTasks.filter((task) => task.sessionId === sessionId) : []),
     [allTasks, sessionId],
@@ -197,15 +222,20 @@ export function useBackgroundTasks(sessionId: string | null | undefined) {
     setError((current) => current === "output" ? null : current);
   }, []);
 
-  /** Enter the tasks tab: this is the only path that clears the badge. */
+  /**
+   * Enter the tasks tab: this is the only path that clears the badge.
+   *
+   * `selectTab` also expands the container, so a click on a tab while collapsed
+   * lands on a visible panel instead of appearing to do nothing.
+   */
   const openTasksTab = useCallback(() => {
     if (!sessionId) return;
-    setDockView((current) => clearBadge(chooseTab(current, sessionId, "tasks"), sessionId));
+    setDockView((current) => clearBadge(selectTab(current, sessionId, "tasks"), sessionId));
   }, [sessionId]);
 
   const openTodoTab = useCallback(() => {
     if (!sessionId) return;
-    setDockView((current) => chooseTab(current, sessionId, "todo"));
+    setDockView((current) => selectTab(current, sessionId, "todo"));
   }, [sessionId]);
 
   const setCollapsed = useCallback((collapsed: boolean) => {
@@ -254,14 +284,8 @@ export function useBackgroundTasks(sessionId: string | null | undefined) {
   }, []);
 
   const dock = sessionDockState(dockView, sessionId);
-  const hasTasks = sessionTasks.length > 0;
-  const activeTab: DockTab = resolveDockTab(
-    dock,
-    true,
-    hasTasks,
-    sessionTasks.filter((task) => task.state === "running").length,
-    0,
-  );
+  const sides = sidesFor(sessionTasks, todos);
+  const activeTab: DockTab = resolveDockTabFor(dock, sides);
 
   return {
     /** Tasks belonging to the session on screen, after the grace window. */

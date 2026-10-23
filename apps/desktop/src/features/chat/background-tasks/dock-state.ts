@@ -71,6 +71,36 @@ export function resolveDockTab(
   return "todo";
 }
 
+/** Both sides of the container, as the tab rule needs to see them. */
+export type DockSides = {
+  hasTodo: boolean;
+  hasTasks: boolean;
+  runningTasks: number;
+  inProgressTodos: number;
+};
+
+export function resolveDockTabFor(state: DockSessionState, sides: DockSides): DockTab {
+  return resolveDockTab(
+    state,
+    sides.hasTodo,
+    sides.hasTasks,
+    sides.runningTasks,
+    sides.inProgressTodos,
+  );
+}
+
+/**
+ * Whether the background-task panel is the one on screen, which is the only
+ * condition under which a new task needs no badge. A collapsed container shows
+ * no panel at all, so it never counts as looking at the tasks.
+ *
+ * Shared with the hook so the badge rule has one definition instead of a copy
+ * that drifts from the render rule.
+ */
+export function tasksPanelVisible(state: DockSessionState, sides: DockSides): boolean {
+  return !state.collapsed && resolveDockTabFor(state, sides) === "tasks";
+}
+
 /**
  * Record a task list snapshot for one session.
  *
@@ -122,6 +152,21 @@ export function chooseTab(
   tab: DockTab,
 ): DockViewState {
   return withSession(view, sessionId, { chosenTab: tab });
+}
+
+/**
+ * The user clicked a tab in the header.
+ *
+ * Clicking a tab while collapsed also expands the container — otherwise the
+ * click would only swap an invisible panel and appear to do nothing — so this
+ * is the one user action that writes both fields.
+ */
+export function selectTab(
+  view: DockViewState,
+  sessionId: string,
+  tab: DockTab,
+): DockViewState {
+  return withSession(view, sessionId, { chosenTab: tab, collapsed: false });
 }
 
 export function toggleCollapsed(
