@@ -8,6 +8,41 @@
 
 ## 1. Goals
 
+### E2E-PI-130-kernel-upgrade
+
+- **Preconditions:** Exact Pi 1.3.0 pins and migrated patches in a dedicated
+  worktree, isolated fixture state, and no real provider credentials.
+- **Steps:** Submit a Desktop turn that receives malformed final tool JSON,
+  then a corrected Write call and a final answer. Repeat with a literal invalid
+  Unicode escape in the tool input. Resume DeepSeek history using the same and
+  a different provider/model identity. Run two turns with extensions that guard
+  `before_agent_start` by `messageType === "user"`. Exercise hosted search,
+  native Pi continuation, and MCP with existing offline suites.
+  Expand a slash template with an empty quoted argument followed by two values;
+  exercise strict-tool downgrade, thinking-off, error images, mixed reasoning/text
+  stream chunks, and native tool restoration under `noTools: "all"`.
+- **Expected:** Malformed calls never reach Host execution; raw input reaches
+  the next model request as a tool error, and only the corrected call executes.
+  Unicode escapes retain all fields. Same-model thinking replays as reasoning;
+  foreign thinking is omitted without altering visible history. Prompt additions
+  remain ordered and do not accumulate. Host permissions, persistence, native
+  tool restrictions, search replay, and cancellation remain unchanged.
+  Empty quoted template arguments retain their positions and activate defaults;
+  strict `require` remains strict, hosted search survives downgrade, and native
+  historical tool activation cannot bypass Desktop's explicit no-tools setting.
+- **Coverage:** `pi-upstream-1.3-contract.test.ts`, `flash-transcript.test.ts`,
+  `hosted-search-consumers.test.ts`, `provider-stream-frame-fields.test.ts`,
+  `extensions/prompt-chain.test.ts`, `native-pi-session.test.ts`,
+  `pi-anthropic-strict-fallback.test.ts`, `pi-1.3-adapter-features.test.ts`,
+  `prompt-templates.test.ts`, and the
+  existing `test:e2e`, `test:e2e:hosted-search`, `test:e2e:provider-api-style`,
+  and `test:e2e:trusted-extensions` commands.
+- **Specs:** [Pi dependency boundary](../02-architecture/06-pi-runtime-dependency-boundary.md),
+  [trusted extensions](../07-plugins/16-trusted-extensions.md).
+- **Acceptance:** Offline runtime/contract and isolated process validation.
+- **Milestone:** Maintenance.
+- **Status:** Candidate validation recorded in `docs/project/pi-130-adoption.md`.
+
 ### E2E-QUEUE-send-now-wakes-subagents
 
 - **Preconditions:** Dedicated request worktree with built workspace packages,
@@ -130,6 +165,27 @@
   The separate Linux RSS measurement verifies that `TranscribeModel.dispose()`
   returns memory to the OS and that the existing lazy-load path reloads it.
 - **Specs:** [Live Voice](../03-runtime/live-voice.md).
+
+### E2E-LIVE-VOICE-gemini-work-schema
+
+- **Preconditions:** Production Gemini adapter with a deterministic transport
+  fixture and a bound work profile; no credentials or hardware devices.
+- **Steps:** Start the call with a work target, accept a valid setup, unmute and
+  send PCM. Reject another setup with close 1007 and a UTF-8 reason. Repeat
+  with a transport error followed by close; cancel and close the adapter.
+- **Expected:** Gemini sends the supported Schema subset and connects; OpenAI's
+  schema and Host argument validation remain strict. Setup rejection settles
+  immediately as `LIVE_PROTOCOL_ERROR`, transport errors remain network errors,
+  and only one failure is reported. The raw reason reaches only the provider
+  log; even the connect rejection crossing IPC contains only the public code.
+  Cancellation suppresses terminal noise and close removes socket observers.
+- **Specs:** `03-runtime/live-voice.md`, `09-logging-and-observability.md`.
+- **Acceptance:** C, E, Security, Quality.
+- **Milestone:** Maintenance, issue #1812.
+- **Automation:** `live-voice-gemini-adapter.test.mjs`,
+  `live-voice-service-lifecycle.test.mjs`, and voice-runtime `live/protocol.test.ts`.
+- **Status:** Adapter/service contract-covered; full Electron/Gemini account and
+  physical microphone acceptance remain separate and are not certified here.
 
 ### E2E-LIVE-VOICE-public-settings-and-reconnect
 
@@ -515,6 +571,21 @@
   production `AskToolCard` in a real Chromium page, clicks through the header
   actions, and measures the multi-block question layout. Runtime boundary
   validation is covered by `packages/agent-runtime/src/runtime.test.ts`.
+
+### E2E-ASKTOOL-draft-survives-session-switch
+
+- **Preconditions:** No live provider is required; the fixture stubs
+  `api.resolveAskTool` and seeds one two-question ask through the real store
+  slice.
+- **Steps:** Mount the production `AskToolCard`, select the second option on
+  question one, advance to question two, unmount the card (the session switch
+  the dock performs), and remount it with the same `requestId`. Then click the
+  first step indicator to return to question one.
+- **Expected:** The remounted card opens on question two with the earlier
+  selection still marked, and question one still shows the selected option.
+  Resolving or dismissing the ask clears the stored draft.
+- **Status:** Automated in `pnpm test:e2e:asktool-card` as the
+  `E2E-ASKTOOL-draft-survives-session-switch` flow.
 
 ### E2E-POWER-keep-awake-setting
 
@@ -1359,6 +1430,27 @@ identify the platform validation still needed.
 - **Milestone**: M2
 - **Status**: Unit-covered (binding resolution and endpoint assertion)
 
+#### E2E-005K: OpenCode Go Claude models use the published Anthropic route
+
+- **Preconditions**: An OpenCode Go provider uses the built-in preset. The
+  deterministic catalog fixture contains `claude-haiku-5-5` with
+  `api: "anthropic_messages"` and an OpenCode Anthropic root `baseUrl`, plus a
+  DeepSeek Chat Completions control model.
+- **Steps**: 1) Select Claude Haiku and send a text turn through a capture
+  fixture. 2) Capture the request URL and adapter payload. 3) Repeat with the
+  DeepSeek control model. 4) Repeat with the same catalog metadata on a custom
+  OpenAI-compatible provider.
+- **Expected**: OpenCode Claude uses the Anthropic adapter and posts to
+  `/zen/go/v1/messages`; it does not post Chat Completions and does not return
+  `ModelProtocolUnsupported`. DeepSeek keeps `/chat/completions`. The custom
+  provider keeps its saved wire style and base URL despite the foreign catalog
+  API. Unit coverage lives in `packages/agent-runtime/src/provider-binding.test.ts`.
+- **Specs linked**: `03-runtime/11-provider-model-system.md`,
+  `03-runtime/13-model-catalog-and-selection.md`, issue #1728
+- **Acceptance**: F (runtime provider requests)
+- **Milestone**: M2
+- **Status**: Unit-covered; live endpoint scenario Draft
+
 #### E2E-005C: OpenAI-compatible system role fallback
 
 - **Preconditions**: A deterministic OpenAI-compatible Chat Completions
@@ -1839,26 +1931,36 @@ identify the platform validation still needed.
   regression in `renderer-stream-safety.test.mjs`, and math delimiter rendering
   in `latex-math.test.mjs`; full UI observation remains Draft)
 
-#### E2E-010: Abort generation
+#### E2E-010: Stop turns and in-flight tools safely
 
 - **Preconditions**: A session can produce both a deliberately delayed first
-  token and a streaming response.
+  token and a streaming response. A deterministic Host fixture can hold a
+  read-only `Grep` call and expose a pending `Write` approval.
 - **Steps**: 1) Send ordinary text and click Stop immediately, including while
   the prompt is still being admitted. 2) Confirm the user row is undone and
   the text returns to the composer after that first Stop. 3) Send again, wait
   for partial output, then stop during the stream. 4) Immediately send a new
-  prompt after Stop returns, without waiting for an idle delay. 5) Observe the
-  transcript and composer.
+  prompt after Stop returns, without waiting for an idle delay. 5) Start a
+  read-only Grep that does not return, press Stop, then start another prompt.
+  6) Start a Write that is waiting for permission, press Stop, then try to
+  approve the stale request. 7) Observe the transcript, composer, and workspace.
 - **Expected**: The first Stop is honored even if prompt admission is still in
   progress; the unanswered send is undone and its draft restored. The
   streaming send stops with its partial response preserved and no draft
-  restoration or duplicate user turn. Stop returns after the active runtime
-  operation has settled, and the follow-up starts without `AGENT_BUSY`. The
-  session remains usable.
-- **Specs linked**: `03-runtime/02-agent-runtime.md`
+  restoration or duplicate user turn. The read-only tool returns
+  `TOOL_ABORTED`, its late result is discarded, and the follow-up starts
+  without `AGENT_BUSY`. Stopping the pending Write cancels its permission;
+  approving the stale request fails and creates no file. A mutating operation
+  that already started is not reported stopped before its Host result arrives.
+- **Specs linked**: `03-runtime/02-agent-runtime.md`,
+  `03-runtime/03-tools-and-permissions.md`, `03-runtime/06-host-rpc-protocol.md`,
+  ADR `tool-abort-abandons-host-call`
 - **Acceptance**: C (abort)
 - **Milestone**: M2
-- **Status**: Draft
+- **Status**: Runtime and Host cancellation contracts automated by
+  `packages/agent-runtime/src/runtime.test.ts` and the pending-Write regression
+  in `crates/host-core/src/rpc/mod.rs`; rendered Electron interaction remains
+  a manual validation run.
 
 #### E2E-171: Streaming reply survives quit, crash, and stop
 
@@ -3311,37 +3413,53 @@ identify the platform validation still needed.
 - **Steps**: 1) Stream progress paragraph A, a multi-item search segment,
   progress paragraph B, and a multi-item command segment with adjacent Bash rows.
   2) Inspect the open active group; manually close it while more output arrives.
-  3) Complete the turn and inspect untouched versus user-owned groups, and confirm
-  the Bash rows stay visible with every group collapsed. 4) Open one completed
-  group and one item, copy its output, close and reopen the group, then open a
-  sibling group independently. 5) Repeat with a singleton item and with the last
-  activity group's literal final item set to a tool/search, thinking, failed tool,
-  and denied tool. 6) Toggle `Show thinking` off and on and inspect the
-  active-thinking, failure/recovery and completed states. 7) Remount rows within
+  3) Complete the turn and confirm exactly one process disclosure owns every
+  pre-answer row; close it and confirm the groups and run rows close with it, then
+  reopen and confirm the group choice returns. 4) Open one completed group and one
+  item, copy its output, close and reopen the group, then open a sibling group
+  independently. 5) Switch `Transcript display` across Flat, Commands first, and
+  Fully folded and inspect the grouping, group boundaries, where the run rows
+  render, and the disclosure count. 6) Repeat with a singleton item and with the
+  last activity group's literal final item set to a tool/search, thinking, failed
+  tool, and denied tool. 7) Toggle `Show thinking` off and on and inspect the
+  active-thinking, failure/recovery and completed states. 8) Remount rows within
   the retained pane, then reload the renderer and reopen the session.
-- **Expected**: Chronological collapsible process segments keep the trailing answer
-  outside them. The active group opens, then closes on completion only if
-  untouched; completed groups otherwise start closed. Bash/run aliases are excluded
-  from every process disclosure and stay visible even when every group is collapsed.
-  A singleton has no group wrapper. No item payload opens itself: a tool/search row
-  stays a header until the user opens it, while a final thinking item keeps its own
-  leaf default and never selects an earlier tool. When `Show thinking` is off, the
-  live thinking indicator stays visible while completed reasoning text and excerpts
-  are hidden and empty thinking-only containers are omitted; turning it back on
-  restores them. Parent, child and sibling choices are independent;
-  closing/reopening a parent preserves descendants, and streaming/completion does
-  not override user-owned choices. Retained-pane remounts preserve choices;
-  renderer restart reapplies defaults while tool names, arguments, results and
-  statuses remain restored. Group headers show bounded running and issue summaries
-  without marking the whole turn failed.
+- **Expected**: A turn renders exactly one process disclosure containing every
+  pre-answer row, the `Bash`/run rows included; the trailing answer, assistant
+  errors and stopped trailing text stay outside it, as do pending actions. The
+  active group stays open while the turn runs. After completion, ordinary groups
+  with at most four visible items and Task topology groups remain open; larger
+  ordinary groups start closed. Closing the turn's disclosure hides groups and
+  run rows under it, and reopening restores their defaults and explicit user
+  choices. In
+  Fully folded (the default), run rows stay inside their groups and only ordinary
+  assistant progress text splits a group. In Commands first, run rows render as
+  their own rows beside the groups, adjacent calls stay separate, a row's detail
+  stays closed until opened, and a normal assistant progress message or a command
+  ends a group. In Flat, no nested group renders and the rows keep transcript
+  order inside the outer disclosure. Every mode keeps the disclosure count at one.
+  A singleton has no group wrapper. No item payload opens itself except the
+  display mode's Thinking default: a tool/search row stays a header until the user
+  opens it, while a final thinking item never selects an earlier tool. The header
+  reports `Running`, `Finished`, `Stopped`, or `Failed` with failure and stop
+  outranking a normal finish, reads `Thinking` while the live step is reasoning,
+  never repeats the current command, and omits the duration when none was
+  recorded. When `Show thinking` is off, no completed reasoning row renders; only
+  the live TextShimmer `Thinking` indicator remains while reasoning streams, and
+  turning it back on restores the completed rows. Parent, child and sibling
+  choices are independent; closing/reopening a parent preserves descendants, and
+  streaming/completion does not override user-owned choices. Retained-pane
+  remounts preserve choices; renderer restart reapplies defaults while tool names,
+  arguments, results and statuses remain restored. Group headers show bounded
+  running and issue summaries without marking the whole turn failed.
 - **Specs linked**: `04-ux/01-ui-ia.md`,
   `04-ux/07-ui-design-system.md`, `04-ux/08-component-spec.md`,
   `04-ux/09-interaction-patterns.md`
 - **Acceptance**: C (chat stream), E (tools), F (persistence)
 - **Milestone**: M3
-- **Status**: Draft. For the 2026-09-20 nested-disclosure change, this scenario is
-  intended behavior for static source/design review only; no unit, component,
-  integration, browser, Electron or E2E test is added or run by that scoped task.
+- **Status**: Draft. Unit and style checks cover the display modes, Thinking
+  defaults and header rules; this scenario remains the intended manual
+  transcript-reload behavior.
 
 #### E2E-041: Conversation minimap navigates long transcripts
 
@@ -5166,12 +5284,18 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 #### E2E-060d: Assistant meta chips, compact context summary, and retry action
 
-- **Preconditions**: A completed assistant message includes modelId and token
-  usage; another completed assistant message has content but no usage. The
-  selected model has a published 1m-class context window, while its provider
-  binding still contains the legacy 128k generic seed.
+- **Preconditions**: A completed visual turn includes modelId and token usage
+  across more than one assistant message; another completed assistant message
+  has content but no usage. The selected model has a published 1m-class context
+  window, while its provider binding still contains the legacy 128k generic
+  seed.
 - **Steps**: 1) Open the session. 2) Confirm the completed turn shows a model
-  badge and no context inspector under the answer. 3) Hover the composer
+  badge and no context inspector under the answer. Confirm the turn usage
+  capsule follows the badge with its average speed and compact total, then
+  hover or keyboard-focus it and inspect the cache-read/input/output exact
+  counts, the turn total, and cache write only when non-zero. Move the pointer
+  into the popover and confirm it stays open, then dismiss it with Escape and
+  with an outside pointer press. 3) Hover the composer
   toolbar inspector trigger, confirm the panel stays closed, then click it.
   4) Inspect the remaining-token-plus-percentage heading, used/window counts,
   unboxed turn/speed values, total session duration, and three timing rows for
@@ -5193,7 +5317,15 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   without usage still offers Retry on completed turns and omits the composer
   inspector.
 - **Expected**: Model badge appears under completed assistant answers when a
-  model id exists. The compact Context inspector appears in the composer
+  model id exists, followed immediately by the turn usage capsule when that
+  turn has usage. The capsule's speed is summed output tokens over summed
+  response duration, and its total sums input/output/cache read/cache write
+  across the visual turn, counting reasoning inside output and excluding
+  subagent spend. Its popover stays open while the pointer is over it, closes
+  on pointer leave after a grace delay unless the trigger retains keyboard
+  focus, on Escape, or on an outside press; it portals to the body, clamps to
+  the conversation pane, and is absent on streaming turns.
+  The compact Context inspector appears in the composer
   right toolbar, left of the model picker, once any usage exists, and always
   mirrors the newest usage-bearing assistant turn. The trigger shows the ring
   plus remaining-capacity percentage (no Context label) and low-space
@@ -5212,7 +5344,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   explanatory estimate paragraph is rendered. Occupancy, turn total, and
   provider cache/input/output/reasoning/hit-rate are the last usage-bearing
   assistant message, not the summed tool-loop, so cache read stays on the
-  same scale as the context window. The cache hit rate is omitted
+  same scale as the context window; this last-request value remains distinct
+  from the capsule's visual-turn aggregate. The cache hit rate is omitted
   when cache-read metadata is absent rather than inferred. A published 1m-class
   limit (for example `gpt-5.6-luna` at 1,050,000 tokens) is shown instead of
   128k, the same effective window is used by the agent runtime, and a non-default
@@ -5987,7 +6120,9 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   paints the retained frame and offset immediately. Returning to an evicted
   session restores the message and viewport offset recorded before eviction,
   including explicit expanded content, using a bounded historical read if the
-  latest page no longer contains the anchor. The cold selection's progress track
+  latest page no longer contains the anchor. If the anchor is already loaded but
+  outside the mounted window, the saved absolute scroll offset is restored while
+  the row window remains bounded. The cold selection's progress track
   and composer fence remain unchanged. No search highlight is introduced, live
   model-input messages are unchanged, and real input or a new turn cancels
   automatic alignment. First visits and pinned revisits still follow latest. Nothing is
@@ -6928,6 +7063,10 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
     loop on a second overflow. A recoverable first overflow emits no terminal
     error message or `error` event; only a failed retry (or failed compaction)
     closes the bubble with `CONTEXT_TOO_LARGE` / the actual terminal error.
+  - If a retryable provider stream failure arrives after compaction has already
+    replaced the failed assistant with a summary or retained user message, the
+    retry keeps that current compacted transcript and calls `continue()`; it
+    does not surface the missing-assistant guard error (issue #1768).
   - If automatic summary generation fails, a durable retained-tail fallback
     checkpoint is appended, the run stays active, and one warning explains
     that older model context was reduced; the transcript row for that
@@ -8438,6 +8577,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   6. Settings UI updates status to `Ready` with discovered tools, shows localized success toast, and displays `OAuth` badge.
   7. When access token expires, `UserMcpRuntime` transparently uses refresh token to obtain a fresh access token without user prompt.
   8. Moving the server via `mcp.transfer` preserves and re-keys the OAuth token secret under the destination ID.
+- **No-DCR case**: When authorization-server metadata omits `registration_endpoint` and there is no reusable client, Authorize does not open a browser. The error event contains `MCP_OAUTH_DCR_UNAVAILABLE` and Settings shows localized recovery guidance to request a client ID from the server operator or use a DCR-capable server.
 - **Specs linked**: `03-runtime/01-ipc-protocol.md`, ADR 0283, ADR 0142
 - **Acceptance**: E (tools & permissions), Security
 - **Milestone**: M5
@@ -8703,6 +8843,40 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
   (`apps/desktop/test/composer-file-reference-display.test.mjs`); file-mode row
   layout covered by `scripts/e2e-composer-autocomplete.mjs`; full UI journey
   Draft (run only in a capable environment when this surface changes)
+
+#### E2E-COMPOSER-deep-file-mentions: `@` reaches deep files in a large workspace
+
+- **Preconditions**: The app is running with an Agent session in a workspace
+  whose index is truncated (more than 8000 files and directories), with a
+  script several folders below thousands of shallow assets — for example a
+  Unity project's `Assets/_Game/Scripts/Gameplay/Player/FeatureController.cs`.
+  Run once with the workspace under git and once without.
+- **Steps**: 1) Type `@` and inspect the footnote. 2) Type the script's name
+  and pause. 3) Accept the script's row with Enter. 4) Edit the query quickly
+  through several prefixes. 5) Repeat in a small workspace and in a remote
+  session.
+- **Expected**:
+  - The bare `@` lists the index and shows the truncation footnote.
+  - After the pause the deep script appears as a row, ranked like any other
+    match, and the footnote disappears once that search has answered; files
+    excluded by `.gitignore` or the ignore set never appear.
+  - Accepting it inserts the same file chip as any other reference.
+  - Rows never belong to an earlier query. The menu keeps the local matches
+    while a search is pending.
+  - A small workspace issues no search request; a remote session keeps its
+    snapshot and footnote.
+- **Specs linked**: `04-ux/08-component-spec.md` §11.8,
+  `03-runtime/01-ipc-protocol.md` §13c, `08-meta/decisions-log.md` (D124,
+  D669), ADR 0024
+- **Acceptance**: C (conversation & stream), Quality
+- **Milestone**: M5
+- **Status**: Unit-covered (`packages/host-runtime/src/fs-index.test.ts`
+  covers the git and walk listings, ignore rules, directories, and the result
+  limit); the renderer journey — search after the pause, merge, accept, stale
+  answers, the footnote, and the complete-index path — is covered by
+  `apps/desktop/test/composer-deep-file-search-user-path.test.mjs` in a real
+  Electron renderer. The full desktop journey against a large real tree is
+  Draft (run only in a capable environment when this surface changes).
 
 #### E2E-102b: Unanswered Stop restores compact file-reference drafts
 
@@ -10100,6 +10274,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 
 | Acceptance | Scenarios |
 |---|---|
+| C / E / Security / Quality — Gemini work setup | E2E-LIVE-VOICE-gemini-work-schema |
 | B / Security / Quality — Optional provider client certificate requests | E2E-PROVIDER-optional-client-certificate |
 | C / E / F / Quality / Security — Session Todo checklist | E2E-CHAT-session-todo-checklist |
 | C / E / Security / Quality — Live Voice four-stage interaction | E2E-LIVE-VOICE-four-stage-ui |
@@ -10137,6 +10312,8 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | Quality | E2E-SETTINGS-inline-capability-imports, E2E-CHAT-long-history-stream-keeps-responsive, E2E-CHAT-running-status-survives-output-pauses, E2E-032, E2E-033, E2E-039, E2E-043, E2E-044, E2E-045, E2E-046, E2E-047, E2E-048, E2E-048A, E2E-049, E2E-050, E2E-053, E2E-055, E2E-056, E2E-057, E2E-058, E2E-059, E2E-060, E2E-061, E2E-062, E2E-063, E2E-064, E2E-065, E2E-066, E2E-067, E2E-068, E2E-069, E2E-070, E2E-071, E2E-072, E2E-073, E2E-074, E2E-075, E2E-076, E2E-077, E2E-078, E2E-079, E2E-080, E2E-081, E2E-082, E2E-083, E2E-084, E2E-085, E2E-086, E2E-092, E2E-093, E2E-094, E2E-095, E2E-096, E2E-097, E2E-098, E2E-099, E2E-100, E2E-101, E2E-102, E2E-102a, E2E-102b, E2E-102c, E2E-102d, E2E-102e, E2E-103, E2E-AGENTS-001, E2E-021a, E2E-024N, E2E-059a, E2E-060b, E2E-060c, E2E-061a, E2E-073a, E2E-111, E2E-114, E2E-117, E2E-118, E2E-119, E2E-120, E2E-122, E2E-123, E2E-142, E2E-143, E2E-144, E2E-145, E2E-146, E2E-147, E2E-148, E2E-150, E2E-151, E2E-153, E2E-155, E2E-158, E2E-159, E2E-160, E2E-161, E2E-162, E2E-163, E2E-168, E2E-172, E2E-173, E2E-174, E2E-011g, E2E-176, E2E-177, E2E-178, E2E-179, E2E-180, E2E-181, E2E-182, E2E-183, E2E-186, E2E-187, E2E-194, E2E-195, E2E-196a, E2E-196b, E2E-196c, E2E-198, E2E-199, E2E-200, E2E-196, E2E-201, E2E-204, E2E-202, E2E-203, E2E-205, E2E-206, E2E-207, E2E-208, E2E-209, E2E-210, E2E-UPDATE-preference-and-once-only-reminder, E2E-218, E2E-259, E2E-219, E2E-250, E2E-252, E2E-102i, E2E-SUBAGENT-settlement-updates-before-parent-poll, E2E-PLUGIN-imported-pi-package-skills, E2E-PLUGIN-fs-root-follows-the-calling-session, E2E-SUBAGENT-resume-a-settled-delegation, E2E-PLUGIN-provider-catalog-add-service |
 | Quality (sidebar menu placement) | E2E-021c |
 | Quality (project ordering) | E2E-253 |
+| Quality (work-panel tab close visibility) | E2E-WORK-PANEL-active-tab-close-visibility |
+| C / E / G / Quality — Pi kernel upgrade | E2E-PI-130-kernel-upgrade |
 | C — Conversation & stream (IME slash alias) | E2E-255 |
 | E — Tools & permissions (Skill residency) | E2E-254 |
 | Quality (Skill residency and IME slash alias) | E2E-254, E2E-255 |
@@ -10165,6 +10342,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | C / Quality / Security (Conversation MP4 attachments) | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | G — Plugins (Chat file references) | E2E-CHAT-file-ref-opens-the-surface-that-owns-it, E2E-PLUGIN-file-view-collapse-persists |
 | Quality (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it, E2E-PLUGIN-file-view-collapse-persists |
+| C / Quality (Composer deep file mentions) | E2E-COMPOSER-deep-file-mentions |
 | G — Plugins (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Security (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
 | Quality (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
@@ -10202,6 +10380,7 @@ must keep splitting are covered by `markdown-blocks.test.mjs`.
 | M6+ (Windows updater cache) | E2E-260 |
 | M6+ (Independent session communication) | E2E-SESSION-independent-top-level-communication, E2E-SESSION-hover-card-model-and-links |
 | M5 (Chat file references) | E2E-CHAT-shorthand-file-ref-opens-the-matching-file, E2E-CHAT-file-ref-opens-the-surface-that-owns-it |
+| M5 (Composer deep file mentions) | E2E-COMPOSER-deep-file-mentions |
 | M5 (Conversation MP4 attachments) | E2E-CHAT-mp4-attachment-opens-in-system-player |
 | M6+ (Chat file references) | E2E-PLUGIN-file-view-collapse-persists |
 | M6+ (project folder roots) | E2E-PLUGIN-file-view-switches-folder-per-project |
@@ -10428,6 +10607,15 @@ This test plan spec is accepted when:
 - On macOS with Stage Manager, shrink or unfocus the PI window until width < 800 or height < 560.
 - Expect the shell to re-assert a Codex-like footprint (~1200×800, min 800×560 capped to the display work area) and keep restoring while still collapsed (not only during the first 20s after launch).
 - The recovery watchdog is macOS-only (D447). On Windows/Linux it must not run at all: the app must never re-layer or re-raise its own window unprompted. Focus another window, then confirm PI-Desktop stays behind it instead of jumping back to the top of the stack, and that a stacking check (`xprop -root _NET_CLIENT_LIST_STACKING`) never shows it returning to the top periodically.
+- Windows regression: trigger tiny-bounds recovery through show, focus, or
+  restore, then Alt+Tab to another app. PI-Desktop must stay behind that app
+  immediately and after four seconds. Ordinary focus must not resize or raise it;
+  hidden/minimized windows keep their state. Recovery must never enable
+  always-on-top off macOS.
+- Automated lifecycle coverage: `window-topmost-lifecycle.test.mjs` executes the
+  production recovery handlers and watchdog with controlled time, including the
+  unchanged macOS temporary pin and release. Native Alt+Tab validation remains
+  a separate platform check.
 
 ### US-UI-20 Dark floating composer box
 - Switch to dark theme on chat home.
@@ -11244,7 +11432,10 @@ This test plan spec is accepted when:
   localized title and the first question in its toast; generated session-title
   text never replaces that title. Background sessions retain the existing
   native notification policy. Exactly one soft chime plays for the ask; the
-  toast and native banner do not double it.
+  toast and native banner do not double it. With a right-docked work panel,
+  the toast stays horizontally centered within the main-content safe area and
+  never intersects the panel tab strip, browser navigation controls, or URL
+  field. It follows both safe-area resize and same-width horizontal shifts.
   Clicking the question toast (including from New task or Settings) opens its
   originating conversation and project, shows the pending card, and permits
   submitting an answer for that request. Enter and Space activate the focused
@@ -11262,8 +11453,9 @@ This test plan spec is accepted when:
   component in Electron and covers long-prompt scrolling, keyboard reachability,
   visible header actions, and scroll reset on Next.
   `pnpm test:e2e:question-notification` exercises real renderer event handling,
-  toast creation, session/project navigation, and answer submission in isolated
-  Electron with only the IPC boundary stubbed, plus native keyboard input.
+  safe-area geometry under resize and horizontal shift, toast creation,
+  session/project navigation, and answer submission in isolated Electron with
+  only the IPC boundary stubbed, plus native keyboard input.
 - **Status**: Partially automated (component paths and long-prompt behavior are
   covered; full application journey pending)
 
@@ -13385,10 +13577,9 @@ are withdrawn with ADR 0165.
   - Clicking `openimage.js` opens the project's `img/openimage.js`, although the
     scratch store holds a file with that same leaf name: the project is
     searched to exhaustion before the scratch store is considered at all.
-  - `dir/a.ts` opens `src/dir/a.ts`: an exact path beats a shorthand, a longer
-    matching tail beats a bare leaf name, and the shallowest candidate wins a
-    tail-length tie, so the deeper `packages/app/dir/a.ts` is never the one
-    that opens.
+  - `dir/a.ts` matches both `src/dir/a.ts` and
+    `packages/app/dir/a.ts`, so the shorthand is ambiguous and opens nothing.
+    The exact reference `src/dir/a.ts` opens that path.
   - A reference the project cannot answer resolves in the session scratch
     store; one that neither answers resolves in the attachment store, and an
     `attachments/<sha256>` ref opens that stored blob.
@@ -16158,6 +16349,27 @@ plugin-form fixtures in an isolated temporary directory at runtime.
   `scripts/e2e-work-panel-drag.mjs` (`pnpm test:e2e:work-panel-drag`). macOS/Linux
   native dragging remains unqualified.
 
+### E2E-WORK-PANEL-active-tab-close-visibility
+
+- **Preconditions**: Render the work panel with enough long-named tabs to
+  overflow the horizontal strip.
+- **Steps**: Activate an overflowing tab in the narrow layout and inspect its
+  close-button rectangle and `elementFromPoint` hit target. Resize the layout
+  while keeping the same tab active and repeat. Then partially scroll the strip
+  to an inactive tab, hover it, and inspect its close button the same way.
+- **Expected**: The active close button stays fully inside the strip after
+  activation and resize. Hovering a partially visible inactive tab scrolls its
+  close button into the viewport too. In all three states the button is visible
+  and hit testable without requiring a middle click, keyboard shortcut, or
+  widening the panel.
+- **Specs linked**: `04-ux/07-ui-design-system.md` §10, issue #1762
+- **Acceptance**: Quality
+- **Milestone**: Post-M6 desktop shell maintenance
+- **Status**: Electron geometry and hit-target coverage runs in
+  `scripts/e2e-work-panel-tab-close.mjs`; `apps/desktop/test/work-panel.test.mjs`
+  also covers the reveal contract. The Windows probe in
+  `scripts/e2e-work-panel-drag.mjs` checks native hit testing separately.
+
 #### E2E-LAYOUT-sidebar-project-group-fold
 
 - **Preconditions**: Five retained sidebar project groups, seeded through the
@@ -16501,14 +16713,22 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 - **Preconditions**: Rendered Skill Market and MCP Market panels with the
   market APIs stubbed at the IPC boundary. Each API returns a total failure,
-  then a result with one failed source, then a complete result.
+  then a result with one failed source, then a complete result. A second run
+  loads a result first, fails afterwards, and recovers on retry; a third run
+  changes the query after a success so the failure carries a snapshot taken
+  for another query; a fourth run fails with nothing loaded.
 - **Steps**: Open each market; click Retry after the total failure; confirm the
   loading announcement and recovered entry; click Retry again after the
-  partial failure.
+  partial failure. Then load a list, fail the next query, retry, and change
+  the query before failing once more.
 - **Expected**: Both markets repeat the current search, show loading while the
   request runs, retain a Retry action for partial failures, and clear the failed
-  source after recovery. The test makes no live network request and does not
-  change the main-process network policy.
+  source after recovery. After a successful load, a later failure keeps that
+  list on screen, says when it was taken, retains each remote source badge,
+  and still offers Retry; the retained list disappears once a retry succeeds,
+  and it never stands in for a different query or for a failure with nothing
+  loaded. The test makes no live network request and does not change the
+  main-process network policy.
 - **Specs linked**: `04-ux/06-settings-ia.md`, ADR 0177, ADR 0272
 - **Acceptance**: Quality
 - **Milestone**: M6+
@@ -17085,46 +17305,100 @@ plugin-form fixtures in an isolated temporary directory at runtime.
 
 - **Preconditions:** A turn with progress paragraph A, multiple searches plus
   thinking, progress paragraph B, multiple commands plus thinking, and a final
-  answer; the `Show thinking` preference on and off; legacy message-level
-  transcript search targets.
+  answer; the `Show thinking` preference on and off; the `Transcript display`
+  preference at Flat, Commands first, and Fully folded; a restart with saved
+  settings; legacy message-level transcript search targets.
 - **Steps:** Confirm a live active group starts open, let that same turn finish
-  without interacting, and confirm the group collapses. On a second turn, explicitly
-  open a completed group and confirm the choice survives subsequent updates. Turn
-  `Show thinking` off and confirm the live thinking indicator remains while
-  completed reasoning rows and excerpts disappear and no empty thinking-only
-  container is left; turn it back on and confirm the completed rows return. Collapse
-  every group and confirm the Bash/run rows stay visible. Review the nested path,
-  including independent group/item toggles, parent close/reopen, a singleton
-  segment, literal-final-item leaf selection, failure/denial/recovery, retained-pane
-  remounts, Bash rows staying standalone (including adjacent Bash rows) with their
-  details closed until opened, and a legacy search reveal.
-- **Expected:** Chronological collapsible process segments leave the final answer,
-  assistant errors, stopped trailing text and pending actions outside them. The
-  active group starts open; untouched groups collapse at completion, while explicit
-  user choices persist. These group defaults do not depend on the `Show thinking`
-  preference. Bash/run aliases are excluded from every process disclosure and stay
-  standalone rows visible even when every group is collapsed; adjacent Bash rows
-  each remain standalone and a Bash row's detail stays closed until the user opens
-  it. When `Show thinking` is off, the live thinking indicator stays visible,
-  completed reasoning rows and excerpts are hidden, and empty thinking-only
-  containers are omitted; turning it back on restores them. Singletons have no
-  group. No item payload opens itself: a tool/search row stays closed until the user
-  opens it, while a final thinking item keeps its own leaf default.
+  without interacting, and confirm the process closes so only the final answer
+  (and any error or pending-action surface) remains. Reopen it and confirm a
+  group with at most four visible items and any Task topology group stay open,
+  while a larger ordinary group is closed. Confirm tool and search payloads stay
+  closed, and Fully folded keeps each visible reasoning row open when
+  `Show thinking` is on. On a second turn, explicitly
+  open a completed group and confirm the choice survives subsequent updates; then
+  close the turn's disclosure and confirm the group closes with it, and reopen to
+  confirm the group choice is restored. In Fully folded, confirm run rows stay
+  inside their activity groups and that only ordinary assistant progress text
+  splits a group. In Commands first, confirm `Bash`/run rows render as standalone
+  rows beside the groups, that a normal assistant progress message or a command
+  ends the current group, adjacent calls stay separate, and Thinking rows default
+  expanded. In Flat, confirm no nested activity group renders, the outer
+  disclosure lists tools, commands, thinking and progress in transcript order,
+  and tool details stay collapsed. In every mode confirm the turn renders exactly
+  one outer disclosure and that closing it hides, then reopening restores, the
+  rows under it. Turn `Show thinking` off and confirm no completed reasoning row
+  remains and only a live whole-run TextShimmer `Thinking` indicator appears
+  while reasoning streams, with no spinner, pulsing dot or per-character
+  animation and a static presentation under reduced motion; turn it back on and
+  confirm the completed rows return. Select each `Transcript display` value,
+  restart, and confirm it persists; remove the saved value and confirm it
+  defaults to Fully folded. Confirm the header reads running, finished, stopped,
+  or failed for each case, names compaction and recovery while those stages are
+  live, omits the duration when none was recorded, and never repeats the current
+  command. Review the nested path, including independent group/item toggles, a
+  singleton segment, literal-final-item leaf selection, failure/denial/recovery,
+  retained-pane remounts, run rows keeping their details closed until opened, and
+  a legacy search reveal.
+  In AI settings, check the display selector in English and Simplified Chinese
+  at 800px, 1000px, and 1440px window widths with 100% and 150% font scales.
+  Select all three values and verify each remains visibly selected and saved.
+- **Expected:** A turn renders exactly one process disclosure containing every
+  pre-answer row, leaving the final answer, assistant errors, stopped trailing
+  text and pending actions outside it; when no final answer text exists, the
+  process header and those error or pending-action surfaces remain. An untouched
+  process closes at completion. In Flat there are no nested activity groups, and
+  active tools, commands, thinking and progress rows follow transcript order with
+  tool details collapsed. In Commands first, `Bash`/run rows are standalone
+  beside the groups, adjacent calls stay separate, and a normal assistant
+  progress message or a command ends a group, so the middle progress paragraph
+  and each command start a new group. In Fully folded (the default), run rows
+  stay inside their groups and only ordinary assistant progress text splits a
+  group, so the middle progress paragraph ends the preceding group and the
+  following activity starts a new one. A group appears only with at least two
+  visible items; a singleton has no group. Active groups stay open while the turn
+  runs; after completion, groups with at most four visible items and Task topology
+  groups remain open, while larger ordinary groups start closed. Thinking rows
+  default expanded in every mode when `Show thinking` is on.
+  Explicit user choices persist and are restored when the enclosing disclosure is
+  reopened; group defaults do not depend on `Show thinking`. The header
+  reports running, finished, stopped, or failed with failure and stop outranking
+  a normal finish, reads `Thinking` while the live step is reasoning, names
+  compaction and recovery while those stages are live, omits a duration the
+  transcript did not record, and never repeats the current command. Nested group
+  headers and run rows share the turn header's left edge. When `Show thinking` is
+  off, no completed reasoning row renders, and only the live whole-run TextShimmer
+  `Thinking` indicator remains while reasoning streams; turning it back on
+  restores the rows. No item payload opens itself except the display mode's
+  Thinking default: a tool/search row stays closed until the user opens it.
   Parent/child/sibling states remain independent, pane-owned user choices survive
-  updates, preference changes and remounts, and renderer restart reapplies defaults.
-  Search reveals the process segment and activity group that own the named message
-  once per request; item-level targeting is not part of this change, and reasoning
-  hidden by the preference stays hidden until the user turns `Show thinking` on.
-  Saved `showThinking` survives restart; an absent value falls back to the legacy
+  updates, preference changes and remounts, and renderer restart reapplies
+  defaults. Search reveals the turn process and, where one exists, the activity
+  group that own the named message once per request; item-level targeting is not
+  part of this change, and reasoning hidden by the preference stays hidden until
+  the user turns `Show thinking` on. A saved `transcriptDisplayMode` survives
+  restart and an absent or unknown value resolves to Fully folded; saved
+  `showThinking` survives restart, and an absent value falls back to the legacy
   `thinkingDisplayMode` (`compact` hides, `detailed`/unknown/absent shows).
+  The Settings selector grows to its labels beyond the standard 240px field
+  cap. Option labels remain single-line and unclipped; the control and whole
+  options wrap only as needed, preserving the title/help space and preventing
+  horizontal row overflow. Wide windows keep the title and control inline.
 - **Validation scope for the 2026-09-20 change:** Nested disclosure and activity
   group presentation only; precise item-level transcript search targeting is out
   of scope and keeps the existing message-level search behavior.
-- **Automation:** `pnpm test:e2e:transcript` covers default and active-to-completed
-  process disclosure behavior; `pnpm test:e2e:transcript-disclosure` verifies
-  manual-open retention and viewport anchoring; `apps/desktop/test/turn-process.test.mjs`
-  covers process defaults and `apps/desktop/test/thinking-visibility.test.mjs`
-  covers the `showThinking`/legacy resolver precedence.
+- **Automation:** `pnpm test:e2e:transcript` covers the command-first and
+  fully-folded layouts and active-to-completed process disclosure behavior;
+  `pnpm test:e2e:transcript-disclosure` verifies manual-open retention and
+  viewport anchoring; `apps/desktop/test/turn-process.test.mjs` covers mode
+  segmentation, `apps/desktop/test/transcript-display-modes-ui.test.mjs` covers
+  the renderer's mode wiring, Thinking defaults and TextShimmer,
+  `apps/desktop/test/transcript-display-mode-settings.test.mjs` covers the
+  Settings row and search indexing, and
+  `apps/desktop/test/settings-roundtrip.test.mjs` covers normalization, write
+  validation and the fully-folded default.
+  `node scripts/e2e-settings-scroll.mjs` additionally exercises the mounted
+  Settings page's selector layout and settings-save path across both locales,
+  three window widths, and both font scales with isolated Electron state.
 - **Specs:** 04-ux/06-settings-ia, 04-ux/08-component-spec,
   04-ux/09-interaction-patterns; ADR turn-process-and-thinking-display.
 
@@ -17307,16 +17581,24 @@ the latest destination. These assertions measure work counts, not device FPS.
   window, supports parent and subagent requests, and records request payloads.
 - **Steps:** Configure a user context override larger than the published window;
   send a CJK-heavy parent prompt, invoke a subagent, and run a one-shot
-  completion. Repeat the parent request with `thinkingLevel: "omit"`.
+  completion. Repeat the parent request with `thinkingLevel: "omit"`. Restore a
+  session whose transcript holds many large instruction updates on a Responses
+  gateway without mid-conversation system support, then continue it and run a
+  subagent whose updates follow its last usage report.
 - **Expected:** Each request carries a concrete output budget no larger than the
   remaining published window after input estimation and safety reserve. The
   runtime compacts against the published safety ceiling, and no request is sent
   with `input + output` beyond that ceiling. Small ASCII requests retain the
-  configured budget when it fits.
+  configured budget when it fits. The restored session and the subagent send one
+  folded instruction message and keep the configured output budget instead of
+  the provider's minimum.
 - **Specs linked:** `03-runtime/02-agent-runtime.md`,
   `03-runtime/13-model-catalog-and-selection.md`
 - **Acceptance:** F (runtime provider requests), C (chat and stream)
-- **Status:** Unit-covered; deterministic provider fixture pending
+- **Automation:** `packages/agent-runtime/src/output-cap-request.test.ts` drives
+  the restored-session and subagent steps through a loopback Responses gateway.
+- **Status:** Unit-covered; folded-instruction steps covered by a loopback
+  gateway; remaining deterministic provider fixture pending
 
 ### E2E-PROVIDER-certificate-trust-and-terminal-errors
 
@@ -17327,7 +17609,9 @@ the latest destination. These assertions measure work counts, not device FPS.
   desktop sidecar and submit a chat prompt against an untrusted localhost
   certificate. Relaunch with its CA in `NODE_EXTRA_CA_CERTS`, then request the
   same certificate through a hostname absent from its SAN.
-- **Expected:** The child's default CA set includes system roots and extra CAs.
+- **Expected:** The child's default CA set includes every non-expired system
+  root and extra CAs, while expired system-store entries are omitted. Bundled
+  roots and inherited extra CAs remain available.
   The first request fails once with a non-retriable certificate error and no
   retry status; the trusted request returns text; the hostname mismatch still
   fails once. TLS and hostname verification remain enabled.
@@ -17416,6 +17700,15 @@ the latest destination. These assertions measure work counts, not device FPS.
 
 - **Status:** Unit-covered; no end-to-end driver issues a real provider request
   against a duplicated transcript.
+
+- **Reused-id regression (#1815):** Run two actual tool executions whose
+  provider responses reuse the same id, then inspect the next request. Both
+  results must remain, with distinct paired ids and no synthetic placeholder.
+  Repeat after context trimming and restored history, and verify cancellation,
+  metadata and replayed pending snapshots retain their semantics.
+  `runtime.test.ts` covers the parent prompt path; `subagent-fallback.test.ts`
+  drives the real Pi adapter over local HTTP with two executions and three
+  requests; `tool-call-identity.test.ts` covers retained identities after trim.
 
 ### E2E-RUNTIME-system-update-during-tool-call-restore
 
@@ -17900,18 +18193,19 @@ renderer's durable transcript reads. No real model or provider is contacted.
   closure behavior. Covered by the parameterized runtime overflow user-path test.
 
 
-#### E2E-262: Transcript path:line opens and scrolls the host file viewer
+#### E2E-262: Transcript positioned file references open and scroll the host file viewer
 
 - **Preconditions:** Isolated Electron/Chromium, an active workspace and session,
   the bundled file-manager view available, and deterministic filesystem IPC
   fixtures.
-- **Steps:** Render a real transcript `path:line:column` reference followed by
+- **Steps:** Render a real transcript `path:line-range` reference followed by
   sentence punctuation; click its verified file chip and wait for the host file
-  viewer to load.
+  viewer to load. Unit coverage also exercises `path:line:column` and GitHub
+  `path#Lline[-Lend]` references.
 - **Expected:** Despite the bundled file-manager view being available, the
   positioned reference opens in the host's read-only file tab. The file request
-  retains its line and column, and the viewer scrolls the requested line into
-  the visible center area. The path and file contents remain the same as the
+  retains the range's starting line, and the viewer scrolls that line into the
+  visible center area. The path and file contents remain the same as the
   reference target.
 - **Specs:** `04-ux/08` §11.8; ADR 0262.
 - **Status:** `node scripts/e2e-file-ref-line-scroll.mjs` mounts production
@@ -18273,3 +18567,29 @@ host-created files. The full app's file-preview viewer is covered separately.
 - **Milestone:** Maintenance.
 - **Status:** Automated fixture; record the tested head/base and execution
   result in the delivery report.
+
+#### E2E-1175: A plugin suggestion rides in the Composer placeholder and is taken with Tab
+
+- **Preconditions**: A plugin that declares `composer.suggest` is installed,
+  enabled, and granted the permission, and it offers one line on
+  `session:turnEnded` after its own completion.
+- **Steps:** 1) Run an Agent turn in a session and let it complete while that
+  session is on screen and its Composer is empty. 2) Observe the placeholder
+  layer. 3) Press Tab. 4) Repeat, then press Esc. 5) Repeat, then type one
+  character. 6) Repeat, then switch session before the offer arrives.
+- **Expected**: The suggestion appears in the placeholder layer of an empty
+  draft, brighter than the shell placeholder and on one line with an ellipsis,
+  with a `Tab` / `Esc` hint and one polite announcement. Tab writes the exact
+  text into the draft with the caret at the end and the input focused, keeping
+  any staged attachment; Esc drops it; a first character drops it; a missed
+  offer answers `{ shown: false, reason }` and shows nothing. No transcript row,
+  toast, or overlay appears, and the plugin's call is audited.
+- **Specs linked**: `07-plugins/03-plugin-api.md`,
+  `07-plugins/13-plugin-permissions-matrix.md`, ADR 0333.
+- **Acceptance**: A (Composer entry path), Security (permission-gated, never
+  sent by the plugin).
+- **Milestone**: M6+
+- **Status**: Unit/source-contract-covered by
+  `composer-suggestion-state.test.mjs`, `composer-suggestion-relay.test.mjs`,
+  and `plugin-composer-suggestion.test.mjs`; the rendered journey remains a
+  manual/Electron check when this surface changes.
