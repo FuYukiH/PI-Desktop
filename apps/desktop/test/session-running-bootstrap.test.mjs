@@ -84,6 +84,7 @@ test("a new live run is retained when the bootstrap snapshot did not contain it"
 
 test("a session list without a running snapshot remains compatible", async () => {
   const h = harness(null);
+  h.useAppStore.setState({ runningSessions: {} });
   await h.useAppStore.getState().bootstrap();
   assert.equal(h.useAppStore.getState().healthOk, true);
   assert.deepEqual(h.useAppStore.getState().runningSessions, {});
